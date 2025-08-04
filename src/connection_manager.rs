@@ -39,7 +39,11 @@ impl ConnectionManager {
         let mut connections = self.active_connections.write().await;
         connections.insert(peer_id, remote_addr);
 
-        tracing::info!("Connection accepted from peer: {} ({})", peer_id, remote_addr);
+        tracing::info!(
+            "Connection accepted from peer: {} ({})",
+            peer_id,
+            remote_addr
+        );
         Ok(())
     }
 
@@ -64,7 +68,6 @@ mod tests {
     use super::*;
     use crate::security::SecurityConfig;
     use std::net::Ipv4Addr;
-    use std::str::FromStr;
 
     fn create_test_connection_manager() -> ConnectionManager {
         let security_config = SecurityConfig::default();
@@ -88,7 +91,9 @@ mod tests {
         let peer_id = create_test_peer_id();
         let remote_addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
 
-        let result = manager.handle_incoming_connection(peer_id, remote_addr).await;
+        let result = manager
+            .handle_incoming_connection(peer_id, remote_addr)
+            .await;
         assert!(result.is_ok());
         assert_eq!(manager.get_connection_count().await, 1);
 
@@ -103,7 +108,10 @@ mod tests {
         let remote_addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
 
         // First add a connection
-        manager.handle_incoming_connection(peer_id, remote_addr).await.unwrap();
+        manager
+            .handle_incoming_connection(peer_id, remote_addr)
+            .await
+            .unwrap();
         assert_eq!(manager.get_connection_count().await, 1);
 
         // Then close it
@@ -131,8 +139,11 @@ mod tests {
         for i in 0..5 {
             let peer_id = create_test_peer_id();
             let addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, i));
-            
-            manager.handle_incoming_connection(peer_id, addr).await.unwrap();
+
+            manager
+                .handle_incoming_connection(peer_id, addr)
+                .await
+                .unwrap();
             peer_ids.push(peer_id);
             addrs.push(addr);
         }
@@ -157,17 +168,29 @@ mod tests {
         // First two connections should succeed
         let peer1 = create_test_peer_id();
         let peer2 = create_test_peer_id();
-        
-        assert!(manager.handle_incoming_connection(peer1, remote_addr).await.is_ok());
-        assert!(manager.handle_incoming_connection(peer2, remote_addr).await.is_ok());
+
+        assert!(manager
+            .handle_incoming_connection(peer1, remote_addr)
+            .await
+            .is_ok());
+        assert!(manager
+            .handle_incoming_connection(peer2, remote_addr)
+            .await
+            .is_ok());
 
         // Third connection should fail
         let peer3 = create_test_peer_id();
-        assert!(manager.handle_incoming_connection(peer3, remote_addr).await.is_err());
+        assert!(manager
+            .handle_incoming_connection(peer3, remote_addr)
+            .await
+            .is_err());
 
         // After closing one, a new connection should succeed
         manager.handle_connection_closed(&peer1).await;
-        assert!(manager.handle_incoming_connection(peer3, remote_addr).await.is_ok());
+        assert!(manager
+            .handle_incoming_connection(peer3, remote_addr)
+            .await
+            .is_ok());
     }
 
     #[tokio::test]
@@ -181,8 +204,11 @@ mod tests {
             let handle = tokio::spawn(async move {
                 let peer_id = create_test_peer_id();
                 let addr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, i));
-                
-                manager_clone.handle_incoming_connection(peer_id, addr).await.unwrap();
+
+                manager_clone
+                    .handle_incoming_connection(peer_id, addr)
+                    .await
+                    .unwrap();
                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
                 manager_clone.handle_connection_closed(&peer_id).await;
             });

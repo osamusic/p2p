@@ -89,10 +89,20 @@ mod tests {
         };
 
         let cloned = original.clone();
-        
+
         match (original, cloned) {
-            (SyncMessage::Put { key: k1, value: v1, timestamp: t1 }, 
-             SyncMessage::Put { key: k2, value: v2, timestamp: t2 }) => {
+            (
+                SyncMessage::Put {
+                    key: k1,
+                    value: v1,
+                    timestamp: t1,
+                },
+                SyncMessage::Put {
+                    key: k2,
+                    value: v2,
+                    timestamp: t2,
+                },
+            ) => {
                 assert_eq!(k1, k2);
                 assert_eq!(v1, v2);
                 assert_eq!(t1, t2);

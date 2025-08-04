@@ -19,7 +19,9 @@ mod sync;
 
 use connection_manager::ConnectionManager;
 use network::P2PSyncBehaviour;
-use security::{validate_key, validate_value, sanitize_input, AccessControl, RateLimiter, SecurityConfig};
+use security::{
+    sanitize_input, validate_key, validate_value, AccessControl, RateLimiter, SecurityConfig,
+};
 use storage::Storage;
 use sync::SyncMessage;
 
@@ -157,7 +159,7 @@ async fn start_node(
     }
 
     info!("Local peer id: {:?}", swarm.local_peer_id());
-    
+
     // 初期プロンプトを表示
     println!("\n=== P2P Sync System Started ===");
     println!("Commands: add <key> <value>, get <key>, delete <key>, list, status");
@@ -200,7 +202,7 @@ async fn handle_input(
             // 入力のサニタイズ
             let sanitized_key = sanitize_input(key);
             let sanitized_value = sanitize_input(value);
-            
+
             // 入力検証
             validate_key(&sanitized_key, security_config.max_key_length)?;
             validate_value(&sanitized_value, security_config.max_value_length)?;
@@ -362,16 +364,25 @@ async fn handle_swarm_event(
             // Note: We cannot extract peer_id here as it's not available in IncomingConnection
             // Actual connection tracking happens in ConnectionEstablished
         }
-        SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+        SwarmEvent::ConnectionEstablished {
+            peer_id, endpoint, ..
+        } => {
             info!("Connection established with peer: {peer_id}");
             // Extract IP address from endpoint and handle connection
-            if let Some(ip) = endpoint.get_remote_address().iter()
-                .find_map(|protocol| match protocol {
-                    libp2p::multiaddr::Protocol::Ip4(addr) => Some(std::net::IpAddr::V4(addr)),
-                    libp2p::multiaddr::Protocol::Ip6(addr) => Some(std::net::IpAddr::V6(addr)),
-                    _ => None,
-                }) {
-                if let Err(e) = connection_manager.handle_incoming_connection(peer_id, ip).await {
+            if let Some(ip) =
+                endpoint
+                    .get_remote_address()
+                    .iter()
+                    .find_map(|protocol| match protocol {
+                        libp2p::multiaddr::Protocol::Ip4(addr) => Some(std::net::IpAddr::V4(addr)),
+                        libp2p::multiaddr::Protocol::Ip6(addr) => Some(std::net::IpAddr::V6(addr)),
+                        _ => None,
+                    })
+            {
+                if let Err(e) = connection_manager
+                    .handle_incoming_connection(peer_id, ip)
+                    .await
+                {
                     tracing::warn!("Failed to handle incoming connection: {}", e);
                 }
             }
@@ -394,19 +405,13 @@ async fn handle_behaviour_event(
     rate_limiter: &RateLimiter,
     connection_manager: &ConnectionManager,
 ) -> Result<()> {
-    
     match event {
         network::P2PSyncBehaviourEvent::Mdns(mdns_event) => {
             handle_mdns_event(swarm, mdns_event).await?;
         }
         network::P2PSyncBehaviourEvent::Gossipsub(gossipsub_event) => {
-            handle_gossipsub_event(
-                storage,
-                gossipsub_event,
-                rate_limiter,
-                connection_manager,
-            )
-            .await?;
+            handle_gossipsub_event(storage, gossipsub_event, rate_limiter, connection_manager)
+                .await?;
         }
         network::P2PSyncBehaviourEvent::Kad(kad_event) => {
             info!("Kademlia event: {kad_event:?}");
@@ -415,7 +420,7 @@ async fn handle_behaviour_event(
             info!("Identify event: {identify_event:?}");
         }
     }
-    
+
     Ok(())
 }
 
@@ -434,11 +439,14 @@ async fn handle_mdns_event(
         mdns::Event::Expired(list) => {
             for (peer_id, _) in list {
                 info!("mDNS discover peer expired: {peer_id}");
-                swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .remove_explicit_peer(&peer_id);
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -449,7 +457,7 @@ async fn handle_gossipsub_event(
     connection_manager: &ConnectionManager,
 ) -> Result<()> {
     use tracing::warn;
-    
+
     match event {
         gossipsub::Event::Message {
             propagation_source: peer_id,
@@ -461,20 +469,25 @@ async fn handle_gossipsub_event(
                 warn!("Rate limit exceeded for peer {}: {}", peer_id, e);
                 return Ok(());
             }
-            
+
             // 接続状況チェック
             let active_connections = connection_manager.get_active_connections().await;
             if !active_connections.contains_key(&peer_id) {
                 warn!("Message from unknown peer: {}", peer_id);
                 return Ok(());
             }
-            
+
             // メッセージサイズチェック
-            if message.data.len() > 1024 * 1024 { // 1MB
-                warn!("Message too large from peer {}: {} bytes", peer_id, message.data.len());
+            if message.data.len() > 1024 * 1024 {
+                // 1MB
+                warn!(
+                    "Message too large from peer {}: {} bytes",
+                    peer_id,
+                    message.data.len()
+                );
                 return Ok(());
             }
-            
+
             let msg: SyncMessage = match serde_json::from_slice(&message.data) {
                 Ok(m) => m,
                 Err(e) => {
@@ -482,11 +495,15 @@ async fn handle_gossipsub_event(
                     return Ok(());
                 }
             };
-            
+
             info!("Got message from {peer_id}: {msg:?}");
-            
+
             match msg {
-                SyncMessage::Put { key, value, timestamp } => {
+                SyncMessage::Put {
+                    key,
+                    value,
+                    timestamp,
+                } => {
                     // 入力検証
                     if let Err(e) = validate_key(&key, 256) {
                         warn!("Invalid key from peer {}: {}", peer_id, e);
@@ -496,7 +513,7 @@ async fn handle_gossipsub_event(
                         warn!("Invalid value from peer {}: {}", peer_id, e);
                         return Ok(());
                     }
-                    
+
                     storage.put_with_timestamp(&key, &value, timestamp)?;
                 }
                 SyncMessage::Delete { key, timestamp } => {
@@ -504,7 +521,7 @@ async fn handle_gossipsub_event(
                         warn!("Invalid key from peer {}: {}", peer_id, e);
                         return Ok(());
                     }
-                    
+
                     storage.delete_with_timestamp(&key, timestamp)?;
                 }
             }
@@ -517,7 +534,7 @@ async fn handle_gossipsub_event(
         }
         _ => {}
     }
-    
+
     Ok(())
 }
 

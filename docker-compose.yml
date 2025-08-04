@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  p2p-sync:
+    build: .
+    container_name: p2p-sync
+    environment:
+      - RUST_LOG=info
+    ports:
+      - "4001:4001/tcp"
+      - "4001:4001/udp"
+    volumes:
+      - p2p-data:/data
+    stdin_open: true
+    tty: true
+
+volumes:
+  p2p-data:

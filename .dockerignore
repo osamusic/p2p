@@ -1,0 +1,17 @@
+# Ignore most target files but keep release binary
+target/*
+!target/release/
+target/release/*
+!target/release/p2p-sync
+
+.git/
+.gitignore
+*.md
+docs/
+tests/
+.env
+.env.*
+*.log
+Dockerfile
+docker-compose.yml
+.dockerignore

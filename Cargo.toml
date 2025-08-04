@@ -15,7 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 tokio = { version = "1.40", features = ["full"] }
-libp2p = { version = "0.54", features = ["tcp", "mdns", "noise", "yamux", "gossipsub", "kad", "identify", "macros", "tokio", "quic"] }
+libp2p = { version = "0.56", features = ["tcp", "mdns", "noise", "yamux", "gossipsub", "kad", "identify", "macros", "tokio", "quic"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"

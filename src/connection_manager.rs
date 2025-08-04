@@ -158,8 +158,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_limit() {
-        let mut security_config = SecurityConfig::default();
-        security_config.max_connections_per_ip = 2;
+        let security_config = SecurityConfig {
+            max_connections_per_ip: 2,
+            ..Default::default()
+        };
         let access_control = AccessControl::new(security_config);
         let manager = ConnectionManager::new(access_control);
 

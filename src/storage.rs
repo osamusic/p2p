@@ -344,8 +344,8 @@ mod tests {
 
         // Test sequential operations instead of concurrent
         for i in 0..10 {
-            let key = format!("key{}", i);
-            let value = format!("value{}", i);
+            let key = format!("key{i}");
+            let value = format!("value{i}");
 
             storage.put(&key, &value).unwrap();
             let retrieved = storage.get(&key).unwrap();

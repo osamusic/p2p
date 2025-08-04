@@ -22,7 +22,7 @@ WantedBy=multi-user.target
     let service_path = std::path::Path::new("/etc/systemd/system/p2p-sync@.service");
 
     if !service_path.exists() {
-        fs::write(&service_path, service_content)?;
+        fs::write(service_path, service_content)?;
 
         std::process::Command::new("systemctl")
             .args(["daemon-reload"])
@@ -74,7 +74,7 @@ pub fn setup_autostart() -> Result<()> {
     fs::create_dir_all(&launch_agents_dir)?;
 
     let plist_path = launch_agents_dir.join("com.p2psync.daemon.plist");
-    fs::write(&plist_path, plist_content)?;
+    fs::write(plist_path, plist_content)?;
 
     std::process::Command::new("launchctl")
         .args(&["load", plist_path.to_str().unwrap()])

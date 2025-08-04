@@ -32,14 +32,14 @@ mod tests {
         .expect("Correct configuration");
 
         // Create mDNS behaviour
-        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id.clone())
+        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)
             .expect("Failed to create mDNS behaviour");
 
         // Create Kademlia behaviour
         let kad_config = KadConfig::new(libp2p::StreamProtocol::new("/kad/1.0.0"));
 
-        let store = MemoryStore::new(peer_id.clone());
-        let kad = kad::Behaviour::with_config(peer_id.clone(), store, kad_config);
+        let store = MemoryStore::new(peer_id);
+        let kad = kad::Behaviour::with_config(peer_id, store, kad_config);
 
         // Create identify behaviour
         let identify_config = IdentifyConfig::new("p2p-sync/1.0.0".to_string(), keypair.public());
@@ -68,7 +68,7 @@ mod tests {
         let local_key = libp2p::identity::Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(local_key.public());
 
-        let behaviour = create_test_behaviour(local_peer_id.clone(), &local_key);
+        let behaviour = create_test_behaviour(local_peer_id, &local_key);
 
         // For now, just test that the behaviour can be created
         // Full swarm testing would require more complex setup
@@ -92,7 +92,7 @@ mod tests {
         let _behaviours: Vec<_> = peer_ids
             .iter()
             .zip(&keypairs)
-            .map(|(id, kp)| create_test_behaviour(id.clone(), kp))
+            .map(|(id, kp)| create_test_behaviour(*id, kp))
             .collect();
 
         // Successfully created multiple behaviours

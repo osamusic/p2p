@@ -227,16 +227,16 @@ async fn handle_input(
                 .gossipsub
                 .publish(topic.clone(), json)?;
 
-            println!("✓ Added: {} = {}", sanitized_key, sanitized_value);
+            println!("✓ Added: {sanitized_key} = {sanitized_value}");
             info!("Published: {} = {}", sanitized_key, sanitized_value);
         }
         ["get", key] => match storage.get(key)? {
             Some(value) => {
-                println!("✓ {} = {}", key, value);
+                println!("✓ {key} = {value}");
                 info!("{} = {}", key, value);
             }
             None => {
-                println!("✗ {} not found", key);
+                println!("✗ {key} not found");
                 info!("{} not found", key);
             }
         },
@@ -247,7 +247,7 @@ async fn handle_input(
             } else {
                 println!("Stored items ({}):", items.len());
                 for (key, value) in items {
-                    println!("  {} = {}", key, value);
+                    println!("  {key} = {value}");
                 }
             }
         }
@@ -255,11 +255,11 @@ async fn handle_input(
             let connection_count = connection_manager.get_connection_count().await;
             let active_connections = connection_manager.get_active_connections().await;
             println!("=== P2P Status ===");
-            println!("Active connections: {}", connection_count);
+            println!("Active connections: {connection_count}");
             if connection_count > 0 {
                 println!("Connected peers:");
                 for (peer_id, ip) in active_connections {
-                    println!("  {} <- {}", peer_id, ip);
+                    println!("  {peer_id} <- {ip}");
                 }
             } else {
                 println!("No active connections - waiting for peers...");
@@ -286,7 +286,7 @@ async fn handle_input(
                 .gossipsub
                 .publish(topic.clone(), json)?;
 
-            println!("✓ Deleted: {}", key);
+            println!("✓ Deleted: {key}");
             info!("Deleted: {}", key);
         }
         ["help"] | ["h"] => {
@@ -305,7 +305,7 @@ async fn handle_input(
             } else {
                 println!("Connected peers ({}):", active_connections.len());
                 for (peer_id, ip) in active_connections {
-                    println!("  {} from {}", peer_id, ip);
+                    println!("  {peer_id} from {ip}");
                 }
             }
         }
@@ -313,13 +313,13 @@ async fn handle_input(
             let local_peer_id = swarm.local_peer_id();
             let listeners: Vec<_> = swarm.listeners().collect();
             println!("=== Node Information ===");
-            println!("Local Peer ID: {}", local_peer_id);
+            println!("Local Peer ID: {local_peer_id}");
             println!("Listening on:");
             for addr in listeners {
-                println!("  {}", addr);
+                println!("  {addr}");
             }
             let connection_count = connection_manager.get_connection_count().await;
-            println!("Active connections: {}", connection_count);
+            println!("Active connections: {connection_count}");
         }
         _ => {
             println!("Unknown command: '{}'", input.trim());

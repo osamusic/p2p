@@ -119,7 +119,7 @@ mod tests {
             timestamp: Utc::now(),
         };
 
-        let debug_str = format!("{:?}", msg);
+        let debug_str = format!("{msg:?}");
         assert!(debug_str.contains("Put"));
         assert!(debug_str.contains("test_key"));
         assert!(debug_str.contains("test_value"));

@@ -72,9 +72,11 @@ async fn test_rate_limiter() {
     use libp2p::PeerId;
     use p2p_sync::security::{RateLimiter, SecurityConfig};
 
-    let mut config = SecurityConfig::default();
-    config.rate_limit_per_minute = 2;
-    config.rate_limit_burst = 1;
+    let config = SecurityConfig {
+        rate_limit_per_minute: 2,
+        rate_limit_burst: 1,
+        ..Default::default()
+    };
 
     let rate_limiter = RateLimiter::new(config);
     let peer_id = PeerId::random();

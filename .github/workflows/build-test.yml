@@ -84,7 +84,7 @@ jobs:
     
     - name: Upload artifact (Unix)
       if: matrix.os != 'windows-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: p2p-sync-${{ matrix.platform }}
         path: target/${{ matrix.target }}/release/p2p-sync
@@ -92,7 +92,7 @@ jobs:
     
     - name: Upload artifact (Windows)
       if: matrix.os == 'windows-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: p2p-sync-${{ matrix.platform }}
         path: target/${{ matrix.target }}/release/p2p-sync.exe
@@ -160,7 +160,7 @@ jobs:
     
     - name: Upload artifact (Unix)
       if: matrix.os != 'windows-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: p2p-sync-${{ matrix.name }}
         path: target/${{ matrix.target }}/release/p2p-sync
@@ -168,7 +168,7 @@ jobs:
     
     - name: Upload artifact (Windows)
       if: matrix.os == 'windows-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: p2p-sync-${{ matrix.name }}
         path: target/${{ matrix.target }}/release/p2p-sync.exe

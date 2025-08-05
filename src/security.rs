@@ -105,7 +105,7 @@ impl AccessControl {
             whitelist: None,
         }
     }
-    
+
     pub fn with_whitelist(config: SecurityConfig, whitelist: Arc<PeerWhitelist>) -> Self {
         Self {
             config,

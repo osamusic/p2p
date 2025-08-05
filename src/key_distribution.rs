@@ -25,8 +25,8 @@ pub enum KeyDistributionMessage {
     },
     /// Response with a peer's public key
     KeyResponse {
-        target: String,        // Peer ID whose key this is
-        public_key: Vec<u8>,   // Protobuf-encoded public key
+        target: String,      // Peer ID whose key this is
+        public_key: Vec<u8>, // Protobuf-encoded public key
         timestamp: DateTime<Utc>,
     },
     /// Announce availability for key exchange
@@ -44,9 +44,9 @@ pub enum KeyDistributionMessage {
     },
     /// Simple trust recommendation for a peer
     TrustRecommendation {
-        recommender: String,    // Peer ID of the recommender
-        recommended: String,    // Peer ID being recommended
-        name: Option<String>,   // Optional name for the recommended peer
+        recommender: String,  // Peer ID of the recommender
+        recommended: String,  // Peer ID being recommended
+        name: Option<String>, // Optional name for the recommended peer
         timestamp: DateTime<Utc>,
     },
 }
@@ -94,7 +94,7 @@ impl KeyDistributionManager {
         local_keypair: libp2p::identity::Keypair,
     ) -> Self {
         let local_peer_id = PeerId::from(local_keypair.public());
-        
+
         Self {
             whitelist,
             config,
@@ -122,7 +122,10 @@ impl KeyDistributionManager {
         };
 
         if Utc::now() - message_time > max_age {
-            warn!("Ignoring old key distribution message from {}", sender_peer_id);
+            warn!(
+                "Ignoring old key distribution message from {}",
+                sender_peer_id
+            );
             return Ok(None);
         }
 
@@ -135,27 +138,50 @@ impl KeyDistributionManager {
                 return Ok(None);
             }
             processed.insert(message_id, Utc::now());
-            
+
             // Clean up old processed messages
             let cutoff = Utc::now() - max_age;
             processed.retain(|_, &mut timestamp| timestamp > cutoff);
         }
 
         match message.data {
-            KeyDistributionMessage::KeyRequest { requestor, target, .. } => {
-                self.handle_key_request(requestor, target, sender_peer_id).await
+            KeyDistributionMessage::KeyRequest {
+                requestor, target, ..
+            } => {
+                self.handle_key_request(requestor, target, sender_peer_id)
+                    .await
             }
-            KeyDistributionMessage::KeyResponse { target, public_key, .. } => {
-                self.handle_key_response(target, public_key, sender_peer_id).await
+            KeyDistributionMessage::KeyResponse {
+                target, public_key, ..
+            } => {
+                self.handle_key_response(target, public_key, sender_peer_id)
+                    .await
             }
-            KeyDistributionMessage::KeyAnnouncement { peer_id, public_key, .. } => {
-                self.handle_key_announcement(peer_id, public_key, sender_peer_id).await
+            KeyDistributionMessage::KeyAnnouncement {
+                peer_id,
+                public_key,
+                ..
+            } => {
+                self.handle_key_announcement(peer_id, public_key, sender_peer_id)
+                    .await
             }
-            KeyDistributionMessage::WhitelistRequest { peer_id, public_key, name, .. } => {
-                self.handle_whitelist_request(peer_id, public_key, name, sender_peer_id).await
+            KeyDistributionMessage::WhitelistRequest {
+                peer_id,
+                public_key,
+                name,
+                ..
+            } => {
+                self.handle_whitelist_request(peer_id, public_key, name, sender_peer_id)
+                    .await
             }
-            KeyDistributionMessage::TrustRecommendation { recommender, recommended, name, .. } => {
-                self.handle_trust_recommendation(recommender, recommended, name, sender_peer_id).await
+            KeyDistributionMessage::TrustRecommendation {
+                recommender,
+                recommended,
+                name,
+                ..
+            } => {
+                self.handle_trust_recommendation(recommender, recommended, name, sender_peer_id)
+                    .await
             }
         }
     }
@@ -172,18 +198,27 @@ impl KeyDistributionManager {
 
         // Only respond if the sender is the requestor and both are whitelisted
         if sender_peer_id != requestor_peer_id {
-            warn!("Key request sender mismatch: {} != {}", sender_peer_id, requestor_peer_id);
+            warn!(
+                "Key request sender mismatch: {} != {}",
+                sender_peer_id, requestor_peer_id
+            );
             return Ok(None);
         }
 
         if !self.whitelist.is_whitelisted(&requestor_peer_id).await? {
-            warn!("Key request from non-whitelisted peer: {}", requestor_peer_id);
+            warn!(
+                "Key request from non-whitelisted peer: {}",
+                requestor_peer_id
+            );
             return Ok(None);
         }
 
         // Check if auto key sharing is enabled
         if !self.config.auto_share_keys {
-            info!("Auto key sharing is disabled, ignoring key request from: {}", requestor_peer_id);
+            info!(
+                "Auto key sharing is disabled, ignoring key request from: {}",
+                requestor_peer_id
+            );
             return Ok(None);
         }
 
@@ -207,7 +242,10 @@ impl KeyDistributionManager {
             }));
         }
 
-        info!("Don't have public key for requested peer: {}", target_peer_id);
+        info!(
+            "Don't have public key for requested peer: {}",
+            target_peer_id
+        );
         Ok(None)
     }
 
@@ -231,7 +269,10 @@ impl KeyDistributionManager {
         let derived_peer_id = PeerId::from(public_key_obj.clone());
 
         if derived_peer_id != target_peer_id {
-            warn!("Public key does not match claimed peer ID: {} != {}", derived_peer_id, target_peer_id);
+            warn!(
+                "Public key does not match claimed peer ID: {} != {}",
+                derived_peer_id, target_peer_id
+            );
             return Ok(None);
         }
 
@@ -247,16 +288,23 @@ impl KeyDistributionManager {
         if self.whitelist.is_whitelisted(&target_peer_id).await? {
             // Get existing entry details to preserve name and expiration
             let entries = self.whitelist.list_peers().await?;
-            let entry = entries.iter().find(|e| e.peer_id == target_peer_id.to_string());
+            let entry = entries
+                .iter()
+                .find(|e| e.peer_id == target_peer_id.to_string());
 
             if let Some(entry) = entry {
-                self.whitelist.add_peer(
-                    &target_peer_id,
-                    entry.name.clone(),
-                    Some(&public_key_obj),
-                    entry.expires_at,
-                ).await?;
-                info!("Updated public key for whitelisted peer: {}", target_peer_id);
+                self.whitelist
+                    .add_peer(
+                        &target_peer_id,
+                        entry.name.clone(),
+                        Some(&public_key_obj),
+                        entry.expires_at,
+                    )
+                    .await?;
+                info!(
+                    "Updated public key for whitelisted peer: {}",
+                    target_peer_id
+                );
             }
         }
 
@@ -274,13 +322,19 @@ impl KeyDistributionManager {
 
         // Verify the sender is announcing their own key
         if sender_peer_id != announced_peer_id {
-            warn!("Key announcement peer ID mismatch: {} != {}", sender_peer_id, announced_peer_id);
+            warn!(
+                "Key announcement peer ID mismatch: {} != {}",
+                sender_peer_id, announced_peer_id
+            );
             return Ok(None);
         }
 
         // Verify the sender is whitelisted
         if !self.whitelist.is_whitelisted(&sender_peer_id).await? {
-            warn!("Key announcement from non-whitelisted peer: {}", sender_peer_id);
+            warn!(
+                "Key announcement from non-whitelisted peer: {}",
+                sender_peer_id
+            );
             return Ok(None);
         }
 
@@ -289,22 +343,32 @@ impl KeyDistributionManager {
         let derived_peer_id = PeerId::from(public_key_obj.clone());
 
         if derived_peer_id != announced_peer_id {
-            warn!("Announced public key does not match peer ID: {} != {}", derived_peer_id, announced_peer_id);
+            warn!(
+                "Announced public key does not match peer ID: {} != {}",
+                derived_peer_id, announced_peer_id
+            );
             return Ok(None);
         }
 
         // Update the peer's public key
         let entries = self.whitelist.list_peers().await?;
-        let entry = entries.iter().find(|e| e.peer_id == announced_peer_id.to_string());
+        let entry = entries
+            .iter()
+            .find(|e| e.peer_id == announced_peer_id.to_string());
 
         if let Some(entry) = entry {
-            self.whitelist.add_peer(
-                &announced_peer_id,
-                entry.name.clone(),
-                Some(&public_key_obj),
-                entry.expires_at,
-            ).await?;
-            info!("Updated public key from announcement: {}", announced_peer_id);
+            self.whitelist
+                .add_peer(
+                    &announced_peer_id,
+                    entry.name.clone(),
+                    Some(&public_key_obj),
+                    entry.expires_at,
+                )
+                .await?;
+            info!(
+                "Updated public key from announcement: {}",
+                announced_peer_id
+            );
         }
 
         Ok(None)
@@ -319,7 +383,10 @@ impl KeyDistributionManager {
         sender_peer_id: PeerId,
     ) -> Result<Option<KeyDistributionMessage>> {
         if !self.config.accept_whitelist_requests {
-            info!("Whitelist requests are disabled, ignoring request from: {}", sender_peer_id);
+            info!(
+                "Whitelist requests are disabled, ignoring request from: {}",
+                sender_peer_id
+            );
             return Ok(None);
         }
 
@@ -327,7 +394,10 @@ impl KeyDistributionManager {
 
         // Verify the sender is requesting for themselves
         if sender_peer_id != requested_peer_id {
-            warn!("Whitelist request peer ID mismatch: {} != {}", sender_peer_id, requested_peer_id);
+            warn!(
+                "Whitelist request peer ID mismatch: {} != {}",
+                sender_peer_id, requested_peer_id
+            );
             return Ok(None);
         }
 
@@ -336,16 +406,22 @@ impl KeyDistributionManager {
         let derived_peer_id = PeerId::from(public_key_obj.clone());
 
         if derived_peer_id != requested_peer_id {
-            warn!("Whitelist request public key does not match peer ID: {} != {}", derived_peer_id, requested_peer_id);
+            warn!(
+                "Whitelist request public key does not match peer ID: {} != {}",
+                derived_peer_id, requested_peer_id
+            );
             return Ok(None);
         }
 
-        info!("Received whitelist request from: {} (name: {:?})", sender_peer_id, name);
-        
+        info!(
+            "Received whitelist request from: {} (name: {:?})",
+            sender_peer_id, name
+        );
+
         // Note: This is a security-sensitive operation that might require manual approval
         // For now, we just log it. In a production system, this might trigger notifications
         // or require administrator approval.
-        
+
         Ok(None)
     }
 
@@ -362,26 +438,42 @@ impl KeyDistributionManager {
 
         // Verify the sender is the recommender
         if sender_peer_id != recommender_peer_id {
-            warn!("Trust recommendation sender mismatch: {} != {}", sender_peer_id, recommender_peer_id);
+            warn!(
+                "Trust recommendation sender mismatch: {} != {}",
+                sender_peer_id, recommender_peer_id
+            );
             return Ok(None);
         }
 
         // Verify the recommender is whitelisted
         if !self.whitelist.is_whitelisted(&recommender_peer_id).await? {
-            warn!("Trust recommendation from non-whitelisted peer: {}", recommender_peer_id);
+            warn!(
+                "Trust recommendation from non-whitelisted peer: {}",
+                recommender_peer_id
+            );
             return Ok(None);
         }
 
         // Don't allow self-recommendation
         if recommender_peer_id == recommended_peer_id {
-            warn!("Peer {} attempted to recommend themselves", recommender_peer_id);
+            warn!(
+                "Peer {} attempted to recommend themselves",
+                recommender_peer_id
+            );
             return Ok(None);
         }
 
         // Add the recommendation
-        match self.whitelist.add_recommendation(&recommended_peer_id, &recommender_peer_id, name.clone()).await {
+        match self
+            .whitelist
+            .add_recommendation(&recommended_peer_id, &recommender_peer_id, name.clone())
+            .await
+        {
             Ok(()) => {
-                info!("Added trust recommendation: {} recommended by {}", recommended_peer_id, recommender_peer_id);
+                info!(
+                    "Added trust recommendation: {} recommended by {}",
+                    recommended_peer_id, recommender_peer_id
+                );
             }
             Err(e) => {
                 warn!("Failed to add trust recommendation: {}", e);
@@ -403,7 +495,7 @@ impl KeyDistributionManager {
         for entry in entries {
             if entry.public_key.is_none() {
                 let peer_id = entry.peer_id.parse::<PeerId>()?;
-                
+
                 // Check if we already have a pending request
                 {
                     let pending = self.pending_requests.read().await;
@@ -436,7 +528,7 @@ impl KeyDistributionManager {
     /// Announce our public key to whitelisted peers
     pub fn create_key_announcement(&self) -> KeyDistributionMessage {
         let public_key = self.local_keypair.public().encode_protobuf();
-        
+
         KeyDistributionMessage::KeyAnnouncement {
             peer_id: self.local_peer_id.to_string(),
             public_key,
@@ -447,7 +539,7 @@ impl KeyDistributionManager {
     /// Create a whitelist request message
     pub fn create_whitelist_request(&self, name: Option<String>) -> KeyDistributionMessage {
         let public_key = self.local_keypair.public().encode_protobuf();
-        
+
         KeyDistributionMessage::WhitelistRequest {
             peer_id: self.local_peer_id.to_string(),
             public_key,
@@ -464,17 +556,17 @@ impl KeyDistributionManager {
     /// Clean up old pending requests and processed messages
     pub async fn cleanup(&self) -> Result<()> {
         let cutoff = Utc::now() - chrono::Duration::hours(1);
-        
+
         {
             let mut pending = self.pending_requests.write().await;
             pending.retain(|_, &mut timestamp| timestamp > cutoff);
         }
-        
+
         {
             let mut processed = self.processed_messages.write().await;
             processed.retain(|_, &mut timestamp| timestamp > cutoff);
         }
-        
+
         Ok(())
     }
 }
@@ -488,11 +580,12 @@ mod tests {
     async fn test_key_distribution_manager_creation() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("whitelist.db");
+        #[allow(clippy::arc_with_non_send_sync)]
         let whitelist = Arc::new(PeerWhitelist::new(&db_path).unwrap());
-        
+
         let keypair = libp2p::identity::Keypair::generate_ed25519();
         let config = KeyDistributionConfig::default();
-        
+
         let _manager = KeyDistributionManager::new(whitelist, config, keypair);
     }
 
@@ -500,16 +593,21 @@ mod tests {
     async fn test_key_announcement_creation() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("whitelist.db");
+        #[allow(clippy::arc_with_non_send_sync)]
         let whitelist = Arc::new(PeerWhitelist::new(&db_path).unwrap());
-        
+
         let keypair = libp2p::identity::Keypair::generate_ed25519();
         let config = KeyDistributionConfig::default();
-        
+
         let manager = KeyDistributionManager::new(whitelist, config, keypair);
         let announcement = manager.create_key_announcement();
-        
+
         match announcement {
-            KeyDistributionMessage::KeyAnnouncement { peer_id, public_key, .. } => {
+            KeyDistributionMessage::KeyAnnouncement {
+                peer_id,
+                public_key,
+                ..
+            } => {
                 assert_eq!(peer_id, manager.local_peer_id.to_string());
                 assert!(!public_key.is_empty());
             }
@@ -521,18 +619,22 @@ mod tests {
     async fn test_missing_keys_request() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("whitelist.db");
+        #[allow(clippy::arc_with_non_send_sync)]
         let whitelist = Arc::new(PeerWhitelist::new(&db_path).unwrap());
-        
+
         // Add a peer without public key
         let peer_id = PeerId::random();
-        whitelist.add_peer(&peer_id, Some("Test Peer".to_string()), None, None).await.unwrap();
-        
+        whitelist
+            .add_peer(&peer_id, Some("Test Peer".to_string()), None, None)
+            .await
+            .unwrap();
+
         let keypair = libp2p::identity::Keypair::generate_ed25519();
         let config = KeyDistributionConfig::default();
-        
+
         let manager = KeyDistributionManager::new(whitelist, config, keypair);
         let requests = manager.request_missing_keys().await.unwrap();
-        
+
         assert_eq!(requests.len(), 1);
         match &requests[0] {
             KeyDistributionMessage::KeyRequest { target, .. } => {

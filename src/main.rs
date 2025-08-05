@@ -4,10 +4,10 @@ use futures::StreamExt;
 use libp2p::{gossipsub, identify, kad, mdns, noise, tcp, yamux, Multiaddr, SwarmBuilder};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use std::io::Write;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
@@ -55,7 +55,7 @@ enum Commands {
     },
 
     Install,
-    
+
     #[command(subcommand)]
     Whitelist(WhitelistCommands),
 }
@@ -71,17 +71,17 @@ enum WhitelistCommands {
         #[arg(short = 'k', long)]
         public_key_file: Option<String>,
     },
-    
+
     Remove {
         peer_id: String,
     },
-    
+
     List,
-    
+
     Check {
         peer_id: String,
     },
-    
+
     AddKey {
         peer_id: String,
         public_key_file: String,
@@ -138,12 +138,12 @@ async fn start_node(
     }
 
     let rate_limiter = RateLimiter::new(config.security.clone());
-    
+
     // ホワイトリストの初期化
     let whitelist_path = data_dir.join("whitelist.db");
     #[allow(clippy::arc_with_non_send_sync)]
     let whitelist = Arc::new(PeerWhitelist::new(&whitelist_path)?);
-    
+
     // ホワイトリストを含むアクセス制御の初期化
     let access_control = AccessControl::with_whitelist(config.security.clone(), whitelist.clone());
     let connection_manager = ConnectionManager::new(access_control);
@@ -151,7 +151,7 @@ async fn start_node(
     // Generate keypair for this node
     let local_key = libp2p::identity::Keypair::generate_ed25519();
     let local_peer_id = libp2p::PeerId::from(local_key.public());
-    
+
     // Initialize key distribution manager
     let key_dist_config = KeyDistributionConfig::default();
     #[allow(clippy::arc_with_non_send_sync)]
@@ -160,7 +160,7 @@ async fn start_node(
         key_dist_config,
         local_key.clone(),
     ));
-    
+
     let mut swarm = SwarmBuilder::with_existing_identity(local_key.clone())
         .with_tokio()
         .with_tcp(
@@ -286,7 +286,7 @@ async fn handle_input(
             // Convert to P2P message and sign
             let p2p_msg = P2PMessage::Sync(msg);
             let signed_data = SignedData::new(p2p_msg, local_key)?;
-            
+
             let json = serde_json::to_vec(&signed_data)?;
 
             // メッセージサイズチェック
@@ -350,7 +350,7 @@ async fn handle_input(
             // Convert to P2P message and sign
             let p2p_msg = P2PMessage::Sync(msg);
             let signed_data = SignedData::new(p2p_msg, local_key)?;
-            
+
             let json = serde_json::to_vec(&signed_data)?;
 
             // メッセージサイズチェック
@@ -423,19 +423,22 @@ async fn handle_input(
             let announcement = key_dist_manager.create_key_announcement();
             let p2p_msg = P2PMessage::KeyDistribution(announcement);
             let signed_data = SignedData::new(p2p_msg, local_key)?;
-            
+
             let json = serde_json::to_vec(&signed_data)?;
             if json.len() > security_config.max_message_size {
                 anyhow::bail!("Message too large: {} bytes", json.len());
             }
-            
-            swarm.behaviour_mut().gossipsub.publish(topic.clone(), json)?;
+
+            swarm
+                .behaviour_mut()
+                .gossipsub
+                .publish(topic.clone(), json)?;
             println!("✓ Announced public key to all peers");
             info!("Published key announcement");
         }
         ["request-keys"] => {
             let requests = key_dist_manager.request_missing_keys().await?;
-            
+
             if requests.is_empty() {
                 println!("No missing keys to request");
             } else {
@@ -443,35 +446,45 @@ async fn handle_input(
                 for request in requests {
                     let p2p_msg = P2PMessage::KeyDistribution(request);
                     let signed_data = SignedData::new(p2p_msg, local_key)?;
-                    
+
                     let json = serde_json::to_vec(&signed_data)?;
                     if json.len() <= security_config.max_message_size {
-                        swarm.behaviour_mut().gossipsub.publish(topic.clone(), json)?;
+                        swarm
+                            .behaviour_mut()
+                            .gossipsub
+                            .publish(topic.clone(), json)?;
                     }
                 }
-                println!("✓ Requested {} missing public key(s)", num_requests);
+                println!("✓ Requested {num_requests} missing public key(s)");
                 info!("Published {} key requests", num_requests);
             }
         }
         ["request-whitelist"] => {
             print!("Enter your name (optional): ");
             std::io::stdout().flush()?;
-            
+
             let mut name_input = String::new();
             if std::io::stdin().read_line(&mut name_input).is_ok() {
                 let name = name_input.trim();
-                let name = if name.is_empty() { None } else { Some(name.to_string()) };
-                
+                let name = if name.is_empty() {
+                    None
+                } else {
+                    Some(name.to_string())
+                };
+
                 let request = key_dist_manager.create_whitelist_request(name);
                 let p2p_msg = P2PMessage::KeyDistribution(request);
                 let signed_data = SignedData::new(p2p_msg, local_key)?;
-                
+
                 let json = serde_json::to_vec(&signed_data)?;
                 if json.len() > security_config.max_message_size {
                     anyhow::bail!("Message too large: {} bytes", json.len());
                 }
-                
-                swarm.behaviour_mut().gossipsub.publish(topic.clone(), json)?;
+
+                swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .publish(topic.clone(), json)?;
                 println!("✓ Sent whitelist request to all peers");
                 info!("Published whitelist request");
             }
@@ -485,32 +498,39 @@ async fn handle_input(
                     return Ok(());
                 }
             };
-            
+
             print!("Enter optional name for this peer: ");
             std::io::stdout().flush()?;
-            
+
             let mut name_input = String::new();
             if std::io::stdin().read_line(&mut name_input).is_ok() {
                 let name = name_input.trim();
-                let name = if name.is_empty() { None } else { Some(name.to_string()) };
-                
+                let name = if name.is_empty() {
+                    None
+                } else {
+                    Some(name.to_string())
+                };
+
                 let recommendation = KeyDistributionMessage::TrustRecommendation {
                     recommender: swarm.local_peer_id().to_string(),
                     recommended: peer_id.to_string(),
                     name: name.clone(),
                     timestamp: chrono::Utc::now(),
                 };
-                
+
                 let p2p_msg = P2PMessage::KeyDistribution(recommendation);
                 let signed_data = SignedData::new(p2p_msg, local_key)?;
-                
+
                 let json = serde_json::to_vec(&signed_data)?;
                 if json.len() > security_config.max_message_size {
                     anyhow::bail!("Message too large: {} bytes", json.len());
                 }
-                
-                swarm.behaviour_mut().gossipsub.publish(topic.clone(), json)?;
-                println!("✓ Recommended peer {} to the network", peer_id);
+
+                swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .publish(topic.clone(), json)?;
+                println!("✓ Recommended peer {peer_id} to the network");
                 info!("Published trust recommendation for {}", peer_id);
             }
         }
@@ -525,9 +545,23 @@ async fn handle_input(
             info!("Reloaded whitelist cache");
         }
         ["verify-signature"] => {
-            println!("Signature verification functionality available");
-            // The verify method is available for manual signature verification
-            // when needed programmatically
+            // Create a test signed message to demonstrate signature verification
+            let test_msg = P2PMessage::Sync(SyncMessage::Put {
+                key: "test".to_string(),
+                value: "verification".to_string(),
+                timestamp: chrono::Utc::now(),
+            });
+
+            match SignedData::new(test_msg, local_key) {
+                Ok(signed_data) => match signed_data.verify(local_key) {
+                    Ok(true) => {
+                        println!("✓ Signature verification functionality working correctly")
+                    }
+                    Ok(false) => println!("✗ Signature verification failed"),
+                    Err(e) => println!("✗ Signature verification error: {e}"),
+                },
+                Err(e) => println!("✗ Failed to create signed data: {e}"),
+            }
         }
         ["test-access-control"] => {
             let test_config = SecurityConfig::default();
@@ -632,8 +666,17 @@ async fn handle_behaviour_event(
             handle_mdns_event(swarm, mdns_event).await?;
         }
         network::P2PSyncBehaviourEvent::Gossipsub(gossipsub_event) => {
-            handle_gossipsub_event(storage, gossipsub_event, rate_limiter, connection_manager, whitelist, key_dist_manager, swarm, topic)
-                .await?;
+            handle_gossipsub_event(
+                storage,
+                gossipsub_event,
+                rate_limiter,
+                connection_manager,
+                whitelist,
+                key_dist_manager,
+                swarm,
+                topic,
+            )
+            .await?;
         }
         network::P2PSyncBehaviourEvent::Kad(kad_event) => {
             info!("Kademlia event: {kad_event:?}");
@@ -722,7 +765,7 @@ async fn handle_gossipsub_event(
                     return Ok(());
                 }
             };
-            
+
             // Verify sender's signature
             let signer_peer_id = match signed_data.signer.parse::<libp2p::PeerId>() {
                 Ok(id) => id,
@@ -731,13 +774,13 @@ async fn handle_gossipsub_event(
                     return Ok(());
                 }
             };
-            
+
             // Check if signer is whitelisted or trusted through recommendations
             if !whitelist.is_trusted_by_chain(&signer_peer_id).await? {
                 warn!("Message from non-whitelisted peer: {}", signer_peer_id);
                 return Ok(());
             }
-            
+
             // Verify signature if public key is available
             if let Some(public_key) = whitelist.get_public_key(&signer_peer_id).await? {
                 if !signed_data.verify_with_public_key(&public_key)? {
@@ -747,13 +790,16 @@ async fn handle_gossipsub_event(
                 info!("Signature verified for peer: {}", signer_peer_id);
             } else {
                 // For peers without stored public keys, we trust based on whitelist only
-                info!("No public key stored for peer {}, trusting based on whitelist", signer_peer_id);
+                info!(
+                    "No public key stored for peer {}, trusting based on whitelist",
+                    signer_peer_id
+                );
             }
-            
+
             match signed_data.data {
                 P2PMessage::Sync(sync_msg) => {
                     info!("Got sync message from {}: {:?}", signer_peer_id, sync_msg);
-                    
+
                     match sync_msg {
                         SyncMessage::Put {
                             key,
@@ -783,24 +829,34 @@ async fn handle_gossipsub_event(
                     }
                 }
                 P2PMessage::KeyDistribution(key_msg) => {
-                    info!("Got key distribution message from {}: {:?}", signer_peer_id, key_msg);
-                    
+                    info!(
+                        "Got key distribution message from {}: {:?}",
+                        signer_peer_id, key_msg
+                    );
+
                     // Create a new SignedData for just the key distribution message
                     let key_signed_data = SignedData {
                         data: key_msg,
                         signature: signed_data.signature,
                         signer: signed_data.signer,
                     };
-                    
+
                     // Handle key distribution message
-                    if let Some(response) = key_dist_manager.handle_message(key_signed_data, signer_peer_id).await? {
+                    if let Some(response) = key_dist_manager
+                        .handle_message(key_signed_data, signer_peer_id)
+                        .await?
+                    {
                         // Send response if needed
                         let p2p_response = P2PMessage::KeyDistribution(response);
-                        let response_signed = SignedData::new(p2p_response, key_dist_manager.local_keypair())?;
-                        
+                        let response_signed =
+                            SignedData::new(p2p_response, key_dist_manager.local_keypair())?;
+
                         let response_json = serde_json::to_vec(&response_signed)?;
                         if response_json.len() <= 1024 * 1024 {
-                            swarm.behaviour_mut().gossipsub.publish(topic.clone(), response_json)?;
+                            swarm
+                                .behaviour_mut()
+                                .gossipsub
+                                .publish(topic.clone(), response_json)?;
                             info!("Sent key distribution response to {}", signer_peer_id);
                         }
                     }
@@ -829,61 +885,75 @@ async fn handle_whitelist_command(cmd: WhitelistCommands) -> Result<()> {
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("p2p-sync");
-    
+
     std::fs::create_dir_all(&data_dir)?;
     let whitelist = PeerWhitelist::new(&data_dir.join("whitelist.db"))?;
-    
+
     match cmd {
-        WhitelistCommands::Add { peer_id, name, expires_in_hours, public_key_file } => {
+        WhitelistCommands::Add {
+            peer_id,
+            name,
+            expires_in_hours,
+            public_key_file,
+        } => {
             let peer_id = peer_id.parse::<libp2p::PeerId>()?;
-            let expires_at = expires_in_hours.map(|hours| {
-                chrono::Utc::now() + chrono::Duration::hours(hours as i64)
-            });
-            
+            let expires_at = expires_in_hours
+                .map(|hours| chrono::Utc::now() + chrono::Duration::hours(hours as i64));
+
             let public_key = if let Some(path) = public_key_file {
                 match load_public_key_from_file(&path) {
                     Ok(pk) => Some(pk),
                     Err(e) => {
-                        eprintln!("Warning: Failed to load public key from {}: {}", path, e);
+                        eprintln!("Warning: Failed to load public key from {path}: {e}");
                         None
                     }
                 }
             } else {
                 None
             };
-            
-            whitelist.add_peer(&peer_id, name, public_key.as_ref(), expires_at).await?;
-            
+
+            whitelist
+                .add_peer(&peer_id, name, public_key.as_ref(), expires_at)
+                .await?;
+
             if public_key.is_some() {
-                println!("Added peer {} to whitelist with public key", peer_id);
+                println!("Added peer {peer_id} to whitelist with public key");
             } else {
-                println!("Added peer {} to whitelist (no public key)", peer_id);
+                println!("Added peer {peer_id} to whitelist (no public key)");
             }
         }
-        
+
         WhitelistCommands::Remove { peer_id } => {
             let peer_id = peer_id.parse::<libp2p::PeerId>()?;
             whitelist.remove_peer(&peer_id).await?;
-            println!("Removed peer {} from whitelist", peer_id);
+            println!("Removed peer {peer_id} from whitelist");
         }
-        
+
         WhitelistCommands::List => {
             let entries = whitelist.list_peers().await?;
-            
+
             if entries.is_empty() {
                 println!("No peers in whitelist");
             } else {
                 println!("=== Whitelist Entries ===");
-                println!("{:<60} {:<20} {:<20} {:<10}", "Peer ID", "Name", "Expires", "Has Key");
+                println!(
+                    "{:<60} {:<20} {:<20} {:<10}",
+                    "Peer ID", "Name", "Expires", "Has Key"
+                );
                 println!("{}", "-".repeat(110));
-                
+
                 for entry in entries {
-                    let expires = entry.expires_at
+                    let expires = entry
+                        .expires_at
                         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                         .unwrap_or_else(|| "Never".to_string());
-                    
-                    let has_key = if entry.public_key.is_some() { "Yes" } else { "No" };
-                    
+
+                    let has_key = if entry.public_key.is_some() {
+                        "Yes"
+                    } else {
+                        "No"
+                    };
+
                     println!(
                         "{:<60} {:<20} {:<20} {:<10}",
                         entry.peer_id,
@@ -894,56 +964,66 @@ async fn handle_whitelist_command(cmd: WhitelistCommands) -> Result<()> {
                 }
             }
         }
-        
+
         WhitelistCommands::Check { peer_id } => {
             let peer_id = peer_id.parse::<libp2p::PeerId>()?;
             let is_whitelisted = whitelist.is_whitelisted(&peer_id).await?;
-            
+
             if is_whitelisted {
-                println!("Peer {} is whitelisted", peer_id);
+                println!("Peer {peer_id} is whitelisted");
             } else {
-                println!("Peer {} is NOT whitelisted", peer_id);
+                println!("Peer {peer_id} is NOT whitelisted");
             }
         }
-        
-        WhitelistCommands::AddKey { peer_id, public_key_file } => {
+
+        WhitelistCommands::AddKey {
+            peer_id,
+            public_key_file,
+        } => {
             let peer_id = peer_id.parse::<libp2p::PeerId>()?;
-            
+
             // Check if peer is already in whitelist
             if !whitelist.is_whitelisted(&peer_id).await? {
-                println!("Error: Peer {} is not in whitelist. Add the peer first.", peer_id);
+                println!("Error: Peer {peer_id} is not in whitelist. Add the peer first.");
                 return Ok(());
             }
-            
+
             let public_key = load_public_key_from_file(&public_key_file)?;
-            
+
             // Get existing entry details
             let entries = whitelist.list_peers().await?;
             let entry = entries.iter().find(|e| e.peer_id == peer_id.to_string());
-            
+
             if let Some(entry) = entry {
-                whitelist.add_peer(&peer_id, entry.name.clone(), Some(&public_key), entry.expires_at).await?;
-                println!("Updated public key for peer {}", peer_id);
+                whitelist
+                    .add_peer(
+                        &peer_id,
+                        entry.name.clone(),
+                        Some(&public_key),
+                        entry.expires_at,
+                    )
+                    .await?;
+                println!("Updated public key for peer {peer_id}");
             } else {
-                println!("Error: Peer {} not found in whitelist", peer_id);
+                println!("Error: Peer {peer_id} not found in whitelist");
             }
         }
     }
-    
+
     Ok(())
 }
 
 fn load_public_key_from_file(path: &str) -> Result<libp2p::identity::PublicKey> {
     use std::fs;
-    
+
     let data = fs::read(path)?;
-    
+
     // Try different formats
     // First try raw protobuf
     if let Ok(pk) = libp2p::identity::PublicKey::try_decode_protobuf(&data) {
         return Ok(pk);
     }
-    
+
     // Try base64 decode then protobuf
     use base64::Engine;
     if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(&data) {
@@ -951,7 +1031,7 @@ fn load_public_key_from_file(path: &str) -> Result<libp2p::identity::PublicKey> 
             return Ok(pk);
         }
     }
-    
+
     // Try as hex string
     let hex_str = String::from_utf8_lossy(&data).trim().to_string();
     if let Ok(decoded) = hex::decode(&hex_str) {
@@ -959,6 +1039,6 @@ fn load_public_key_from_file(path: &str) -> Result<libp2p::identity::PublicKey> 
             return Ok(pk);
         }
     }
-    
+
     anyhow::bail!("Unable to parse public key from file: {}", path);
 }

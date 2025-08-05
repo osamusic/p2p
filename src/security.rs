@@ -7,6 +7,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use crate::whitelist::PeerWhitelist;
+
 type RequestMap = Arc<RwLock<HashMap<PeerId, Vec<Instant>>>>;
 type ConnectionMap = Arc<RwLock<HashMap<IpAddr, usize>>>;
 
@@ -92,6 +94,7 @@ impl RateLimiter {
 pub struct AccessControl {
     config: SecurityConfig,
     connections_per_ip: ConnectionMap,
+    whitelist: Option<Arc<PeerWhitelist>>,
 }
 
 impl AccessControl {
@@ -99,6 +102,15 @@ impl AccessControl {
         Self {
             config,
             connections_per_ip: Arc::new(RwLock::new(HashMap::new())),
+            whitelist: None,
+        }
+    }
+    
+    pub fn with_whitelist(config: SecurityConfig, whitelist: Arc<PeerWhitelist>) -> Self {
+        Self {
+            config,
+            connections_per_ip: Arc::new(RwLock::new(HashMap::new())),
+            whitelist: Some(whitelist),
         }
     }
 
@@ -110,8 +122,14 @@ impl AccessControl {
             bail!("Peer is blocked: {}", peer_id);
         }
 
-        // ホワイトリストチェック（設定されている場合）
-        if let Some(allowed) = &self.config.allowed_peers {
+        // データベースベースのホワイトリストチェック（設定されている場合）
+        if let Some(whitelist) = &self.whitelist {
+            if !whitelist.is_whitelisted(peer_id).await? {
+                bail!("Peer not in whitelist: {}", peer_id);
+            }
+        }
+        // 設定ベースのホワイトリストチェック（後方互換性のため）
+        else if let Some(allowed) = &self.config.allowed_peers {
             if !allowed.contains(&peer_str) {
                 bail!("Peer not in allowed list: {}", peer_id);
             }

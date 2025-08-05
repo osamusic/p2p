@@ -33,6 +33,8 @@ notify = "6.1"
 toml = "0.8"
 config = "0.14"
 async-trait = "0.1"
+base64 = "0.22"
+hex = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["wincon", "winuser", "processthreadsapi"] }

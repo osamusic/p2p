@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::key_distribution::KeyDistributionMessage;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SyncMessage {
     Put {
@@ -12,6 +14,15 @@ pub enum SyncMessage {
         key: String,
         timestamp: DateTime<Utc>,
     },
+}
+
+/// Combined message type that can handle both data sync and key distribution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum P2PMessage {
+    /// Data synchronization message
+    Sync(SyncMessage),
+    /// Key distribution message
+    KeyDistribution(KeyDistributionMessage),
 }
 
 #[cfg(test)]

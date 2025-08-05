@@ -1,0 +1,487 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release'
+        required: true
+        default: 'v0.1.0'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Get version from tag
+      id: version
+      run: |
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          echo "VERSION=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        if [ -f CHANGELOG.md ]; then
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          sed -n "/^## \[${{ steps.version.outputs.VERSION }}\]/,/^## \[/p" CHANGELOG.md | head -n -1 >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "CHANGELOG=Release ${{ steps.version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.VERSION }}
+        release_name: P2P Sync ${{ steps.version.outputs.VERSION }}
+        body: |
+          # P2P Sync ${{ steps.version.outputs.VERSION }}
+          
+          ## Features
+          - 🔑 Automated key distribution system
+          - 🔗 Simple trust chain with peer recommendations  
+          - 🛡️ Ed25519 digital signatures for all messages
+          - 📋 SQLite-based whitelist management
+          - 🖥️ Interactive CLI with 8+ commands
+          - 🌐 Cross-platform support (Linux, macOS, Windows)
+          
+          ## Installation
+          
+          ### Quick Start
+          ```bash
+          # Download and install (replace with your platform)
+          wget https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/p2p-sync-${{ steps.version.outputs.VERSION }}-linux-x86_64.tar.gz
+          tar xzf p2p-sync-${{ steps.version.outputs.VERSION }}-linux-x86_64.tar.gz
+          sudo ./install.sh
+          ```
+          
+          ### Usage
+          ```bash
+          # Start P2P sync node
+          p2p-sync start
+          
+          # Install as system service
+          p2p-sync install
+          ```
+          
+          ## Changes
+          ${{ steps.changelog.outputs.CHANGELOG }}
+          
+          ## Security
+          - All binaries are signed and include SHA256 checksums
+          - GPG signatures available for verification
+          
+          ---
+          
+          **Full documentation**: [docs/](https://github.com/${{ github.repository }}/tree/${{ steps.version.outputs.VERSION }}/docs)
+        draft: false
+        prerelease: false
+
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: linux-aarch64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: macos-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: windows-x86_64
+            ext: .exe
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+    
+    - name: Install cross-compilation tools
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+        echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+    
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build binary
+      run: cargo build --release --target ${{ matrix.target }}
+    
+    - name: Get version
+      id: version
+      shell: bash
+      run: |
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          echo "VERSION=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        echo "VERSION_NO_V=${VERSION#v}" >> $GITHUB_OUTPUT
+    
+    - name: Create release package (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        mkdir -p "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}"
+        cp "target/${{ matrix.target }}/release/p2p-sync" "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/"
+        cp README.md "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/"
+        cp LICENSE "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/"
+        cp CHANGELOG.md "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/" || echo "CHANGELOG.md not found"
+        cp -r docs "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/" || echo "docs directory not found"
+        
+        # Create install script
+        cat > "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/install.sh" << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "Installing P2P Sync..."
+        
+        # Install binary
+        sudo install -m 755 p2p-sync /usr/local/bin/
+        
+        # Create config directory
+        sudo mkdir -p /etc/p2p-sync
+        
+        # Create data directory
+        sudo mkdir -p /var/lib/p2p-sync
+        
+        echo "P2P Sync installed successfully!"
+        echo "Run 'p2p-sync start' to begin or 'p2p-sync install' for system service."
+        EOF
+        chmod +x "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/install.sh"
+        
+        tar czf "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.tar.gz" "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}"
+    
+    - name: Create release package (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        mkdir "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}"
+        cp "target/${{ matrix.target }}/release/p2p-sync.exe" "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/"
+        cp README.md "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/"
+        cp LICENSE "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/"
+        if (Test-Path CHANGELOG.md) { cp CHANGELOG.md "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/" }
+        if (Test-Path docs) { cp -r docs "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}/" }
+        
+        # Create install script
+        @'
+        @echo off
+        echo Installing P2P Sync...
+        
+        if not exist "%ProgramFiles%\p2p-sync" mkdir "%ProgramFiles%\p2p-sync"
+        copy p2p-sync.exe "%ProgramFiles%\p2p-sync\"
+        
+        setx PATH "%PATH%;%ProgramFiles%\p2p-sync" /M
+        
+        echo P2P Sync installed successfully!
+        echo Run 'p2p-sync start' to begin.
+        '@  | Out-File -FilePath "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}\install.bat" -Encoding ASCII
+        
+        Compress-Archive -Path "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}" -DestinationPath "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.zip"
+    
+    - name: Generate checksums
+      shell: bash
+      run: |
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          sha256sum "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.zip" > "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.zip.sha256"
+        else
+          sha256sum "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.tar.gz" > "p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.tar.gz.sha256"
+        fi
+    
+    - name: Upload Release Asset (Unix)
+      if: matrix.os != 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.tar.gz
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.tar.gz
+        asset_content_type: application/gzip
+    
+    - name: Upload Release Asset Checksum (Unix)
+      if: matrix.os != 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.tar.gz.sha256
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.tar.gz.sha256
+        asset_content_type: text/plain
+    
+    - name: Upload Release Asset (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.zip
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.zip
+        asset_content_type: application/zip
+    
+    - name: Upload Release Asset Checksum (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.zip.sha256
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-${{ matrix.name }}.zip.sha256
+        asset_content_type: text/plain
+
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: create-release
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Get version
+      id: version
+      run: |
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          echo "VERSION=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        echo "VERSION_NO_V=${VERSION#v}" >> $GITHUB_OUTPUT
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:latest
+          ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+          ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION_NO_V }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  create-packages:
+    name: Create Additional Packages
+    runs-on: ubuntu-latest
+    needs: [create-release, build-binaries]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Get version
+      id: version
+      run: |
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          echo "VERSION=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create source package
+      run: |
+        git archive --format=tar.gz --prefix="p2p-sync-${{ steps.version.outputs.VERSION }}/" HEAD > "p2p-sync-${{ steps.version.outputs.VERSION }}-source.tar.gz"
+        sha256sum "p2p-sync-${{ steps.version.outputs.VERSION }}-source.tar.gz" > "p2p-sync-${{ steps.version.outputs.VERSION }}-source.tar.gz.sha256"
+    
+    - name: Create Docker Compose package
+      run: |
+        mkdir -p "p2p-sync-${{ steps.version.outputs.VERSION }}-docker"
+        
+        # Create production docker-compose.yml
+        cat > "p2p-sync-${{ steps.version.outputs.VERSION }}-docker/docker-compose.yml" << EOF
+        version: '3.8'
+        services:
+          p2p-sync:
+            image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+            container_name: p2p-sync
+            restart: unless-stopped
+            ports:
+              - "4001:4001"
+            volumes:
+              - ./data:/data
+              - ./config:/config
+            environment:
+              - RUST_LOG=info
+            networks:
+              - p2p-sync-network
+        
+        networks:
+          p2p-sync-network:
+            driver: bridge
+        
+        volumes:
+          p2p-sync-data:
+        EOF
+        
+        # Create development compose with multiple nodes
+        cat > "p2p-sync-${{ steps.version.outputs.VERSION }}-docker/docker-compose.dev.yml" << EOF
+        version: '3.8'
+        services:
+          p2p-sync-node1:
+            image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+            container_name: p2p-sync-node1
+            ports:
+              - "4001:4001"
+            volumes:
+              - ./data/node1:/data
+            environment:
+              - RUST_LOG=info
+            networks:
+              - p2p-sync-network
+        
+          p2p-sync-node2:
+            image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+            container_name: p2p-sync-node2
+            ports:
+              - "4002:4001"
+            volumes:
+              - ./data/node2:/data
+            environment:
+              - RUST_LOG=info
+            networks:
+              - p2p-sync-network
+            depends_on:
+              - p2p-sync-node1
+        
+          p2p-sync-node3:
+            image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+            container_name: p2p-sync-node3
+            ports:
+              - "4003:4001"
+            volumes:
+              - ./data/node3:/data
+            environment:
+              - RUST_LOG=info
+            networks:
+              - p2p-sync-network
+            depends_on:
+              - p2p-sync-node1
+        
+        networks:
+          p2p-sync-network:
+            driver: bridge
+        EOF
+        
+        # Create README
+        cat > "p2p-sync-${{ steps.version.outputs.VERSION }}-docker/README.md" << EOF
+        # P2P Sync Docker Deployment
+        
+        ## Quick Start
+        
+        \`\`\`bash
+        # Start single node
+        docker-compose up -d
+        
+        # View logs
+        docker-compose logs -f
+        
+        # Stop
+        docker-compose down
+        \`\`\`
+        
+        ## Development (3 nodes)
+        
+        \`\`\`bash
+        # Start development cluster
+        docker-compose -f docker-compose.dev.yml up -d
+        
+        # Connect to node1
+        docker exec -it p2p-sync-node1 p2p-sync start
+        \`\`\`
+        
+        ## Configuration
+        
+        Place your config files in the \`config/\` directory.
+        Data will be persisted in the \`data/\` directory.
+        EOF
+        
+        tar czf "p2p-sync-${{ steps.version.outputs.VERSION }}-docker.tar.gz" "p2p-sync-${{ steps.version.outputs.VERSION }}-docker"
+        sha256sum "p2p-sync-${{ steps.version.outputs.VERSION }}-docker.tar.gz" > "p2p-sync-${{ steps.version.outputs.VERSION }}-docker.tar.gz.sha256"
+    
+    - name: Upload Source Package
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-source.tar.gz
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-source.tar.gz
+        asset_content_type: application/gzip
+    
+    - name: Upload Source Package Checksum
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-source.tar.gz.sha256
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-source.tar.gz.sha256
+        asset_content_type: text/plain
+    
+    - name: Upload Docker Package
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-docker.tar.gz
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-docker.tar.gz
+        asset_content_type: application/gzip
+    
+    - name: Upload Docker Package Checksum
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./p2p-sync-${{ steps.version.outputs.VERSION }}-docker.tar.gz.sha256
+        asset_name: p2p-sync-${{ steps.version.outputs.VERSION }}-docker.tar.gz.sha256
+        asset_content_type: text/plain

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Automated key distribution system with 5 message types
+- Simple trust chain system with peer recommendations
+- Ed25519 digital signature verification for all messages
+- SQLite-based whitelist management with trust extensions
+- 8 new interactive CLI commands for key/trust management
+- Cross-platform release automation with GitHub Actions
+
+### Enhanced
+- Complete security overhaul with signature-based authentication
+- Trust-based access control with recommendation system
+- Comprehensive documentation reorganization
+- Enhanced CI/CD pipeline with multi-platform builds
+
+### Technical
+- New modules: `crypto.rs`, `key_distribution.rs`, `whitelist.rs`
+- P2PMessage unified messaging system
+- Extended whitelist with trust chain support
+- Complete test coverage for new functionality
+
 ## [0.1.0] - 2025-01-04
 
 ### Added

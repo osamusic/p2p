@@ -271,6 +271,28 @@ blocked_peers = []
 - `clap`: CLIパーサー
 - `tracing`: ロギング
 
+## リリース・ダウンロード
+
+### GitHub Releases
+最新のビルド済みバイナリは[Releases](https://github.com/osamusic/p2p-sync/releases)からダウンロードできます：
+
+- **Linux**: `p2p-sync-v*.*.*-linux-x86_64.tar.gz` / `p2p-sync-v*.*.*-linux-aarch64.tar.gz`
+- **macOS**: `p2p-sync-v*.*.*-macos-x86_64.tar.gz` / `p2p-sync-v*.*.*-macos-aarch64.tar.gz`  
+- **Windows**: `p2p-sync-v*.*.*-windows-x86_64.zip`
+
+### Docker Images
+```bash
+# 最新版を実行
+docker run --rm -p 4001:4001 ghcr.io/osamusic/p2p-sync:latest
+
+# 特定のバージョンを実行
+docker run --rm -p 4001:4001 ghcr.io/osamusic/p2p-sync:v0.2.0
+```
+
+### セキュリティ
+- すべてのリリースバイナリにSHA256チェックサム付き
+- Docker イメージは マルチアーキテクチャ対応 (amd64/arm64)
+
 ## 詳細ドキュメント
 
 ### 技術ドキュメント

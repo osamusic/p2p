@@ -1,17 +1,25 @@
-# Ignore most target files but keep release binary
-target/*
-!target/release/
-target/release/*
-!target/release/p2p-sync
-
+# Git and development files
 .git/
 .gitignore
-*.md
-docs/
-tests/
+.github/
+
+# Build artifacts (except what we need)
+target/
+!target/release/p2p-sync
+
+# Development files
 .env
 .env.*
 *.log
-Dockerfile
-docker-compose.yml
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Docker files (not needed in build context since we copy from the builder)
+docker-compose*.yml
 .dockerignore
+
+# Keep these for documentation in final image
+!README.md
+!LICENSE
+!docs/

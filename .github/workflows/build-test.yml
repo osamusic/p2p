@@ -22,26 +22,22 @@ env:
 jobs:
   build-single:
     name: Build ${{ github.event.inputs.platform }}
-    runs-on: ${{ matrix.os }}
     if: github.event.inputs.platform != 'all'
-    strategy:
-      matrix:
-        include:
-          - platform: linux-x86_64
-            target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - platform: linux-aarch64
-            target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-          - platform: macos-x86_64
-            target: x86_64-apple-darwin
-            os: macos-latest
-          - platform: macos-aarch64
-            target: aarch64-apple-darwin
-            os: macos-latest
-          - platform: windows-x86_64
-            target: x86_64-pc-windows-msvc
-            os: windows-latest
+    runs-on: ${{ 
+      github.event.inputs.platform == 'linux-x86_64' && 'ubuntu-latest' ||
+      github.event.inputs.platform == 'linux-aarch64' && 'ubuntu-latest' ||
+      github.event.inputs.platform == 'macos-x86_64' && 'macos-latest' ||
+      github.event.inputs.platform == 'macos-aarch64' && 'macos-latest' ||
+      github.event.inputs.platform == 'windows-x86_64' && 'windows-latest'
+    }}
+    env:
+      RUST_TARGET: ${{ 
+        github.event.inputs.platform == 'linux-x86_64' && 'x86_64-unknown-linux-gnu' ||
+        github.event.inputs.platform == 'linux-aarch64' && 'aarch64-unknown-linux-gnu' ||
+        github.event.inputs.platform == 'macos-x86_64' && 'x86_64-apple-darwin' ||
+        github.event.inputs.platform == 'macos-aarch64' && 'aarch64-apple-darwin' ||
+        github.event.inputs.platform == 'windows-x86_64' && 'x86_64-pc-windows-msvc'
+      }}
 
     steps:
     - uses: actions/checkout@v4
@@ -49,10 +45,10 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        targets: ${{ matrix.target }}
+        targets: ${{ env.RUST_TARGET }}
     
     - name: Install cross-compilation tools
-      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      if: env.RUST_TARGET == 'aarch64-unknown-linux-gnu'
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-aarch64-linux-gnu
@@ -65,37 +61,37 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-${{ env.RUST_TARGET }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     
     - name: Run tests
-      if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-apple-darwin' || matrix.target == 'x86_64-pc-windows-msvc'
-      run: cargo test --target ${{ matrix.target }}
+      if: env.RUST_TARGET == 'x86_64-unknown-linux-gnu' || env.RUST_TARGET == 'x86_64-apple-darwin' || env.RUST_TARGET == 'x86_64-pc-windows-msvc'
+      run: cargo test --target ${{ env.RUST_TARGET }}
     
     - name: Build binary
-      run: cargo build --release --target ${{ matrix.target }}
+      run: cargo build --release --target ${{ env.RUST_TARGET }}
     
     - name: Test binary (Unix)
-      if: matrix.os != 'windows-latest'
-      run: ./target/${{ matrix.target }}/release/p2p-sync --version
+      if: github.event.inputs.platform != 'windows-x86_64'
+      run: ./target/${{ env.RUST_TARGET }}/release/p2p-sync --version
     
     - name: Test binary (Windows)
-      if: matrix.os == 'windows-latest'
-      run: ./target/${{ matrix.target }}/release/p2p-sync.exe --version
+      if: github.event.inputs.platform == 'windows-x86_64'
+      run: ./target/${{ env.RUST_TARGET }}/release/p2p-sync.exe --version
     
     - name: Upload artifact (Unix)
-      if: matrix.os != 'windows-latest'
+      if: github.event.inputs.platform != 'windows-x86_64'
       uses: actions/upload-artifact@v4
       with:
-        name: p2p-sync-${{ matrix.platform }}
-        path: target/${{ matrix.target }}/release/p2p-sync
+        name: p2p-sync-${{ github.event.inputs.platform }}
+        path: target/${{ env.RUST_TARGET }}/release/p2p-sync
         retention-days: 7
     
     - name: Upload artifact (Windows)
-      if: matrix.os == 'windows-latest'
+      if: github.event.inputs.platform == 'windows-x86_64'
       uses: actions/upload-artifact@v4
       with:
-        name: p2p-sync-${{ matrix.platform }}
-        path: target/${{ matrix.target }}/release/p2p-sync.exe
+        name: p2p-sync-${{ github.event.inputs.platform }}
+        path: target/${{ env.RUST_TARGET }}/release/p2p-sync.exe
         retention-days: 7
 
   build-all:
